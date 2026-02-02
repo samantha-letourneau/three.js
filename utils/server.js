@@ -1,7 +1,8 @@
 import http from 'http';
 import path from 'path';
 import os from 'os';
-import { createReadStream, existsSync, statSync, readdirSync } from 'fs';
+import { createReadStream } from 'fs';
+import { readdir, stat } from 'fs/promises';
 import { fileURLToPath } from 'url';
 
 function escapeHtml( str ) {
@@ -44,7 +45,9 @@ const mimeTypes = {
 
 function createHandler( rootDirectory ) {
 
-	return ( req, res ) => {
+	const listingCache = new Map();
+
+	async function handleRequest( req, res ) {
 
 		const pathname = decodeURIComponent( req.url.split( '?' )[ 0 ] );
 		let filePath = path.join( rootDirectory, pathname );
@@ -58,21 +61,66 @@ function createHandler( rootDirectory ) {
 
 		}
 
+		let fileStat;
+
+		try {
+
+			fileStat = await stat( filePath );
+
+		} catch ( err ) {
+
+			if ( err.code === 'ENOENT' ) {
+
+				res.writeHead( 404 );
+				res.end( 'File not found' );
+				return;
+
+			}
+
+			throw err;
+
+		}
+
 		// Handle directories
-		if ( existsSync( filePath ) && statSync( filePath ).isDirectory() ) {
+		if ( fileStat.isDirectory() ) {
 
 			const indexPath = path.join( filePath, 'index.html' );
 
-			if ( existsSync( indexPath ) ) {
+			try {
 
-				filePath = indexPath;
+				const indexStat = await stat( indexPath );
+
+				if ( indexStat.isFile() ) {
+
+					filePath = indexPath;
+					fileStat = indexStat;
+
+				}
+
+			} catch ( err ) {
+
+				if ( err.code !== 'ENOENT' ) throw err;
+
+			}
+
+		}
+
+		if ( fileStat.isDirectory() ) {
+
+			let html;
+			const cached = listingCache.get( filePath );
+
+			if ( cached && cached.mtimeMs === fileStat.mtimeMs ) {
+
+				html = cached.html;
 
 			} else {
 
 				// Show directory listing
-				const files = readdirSync( filePath )
-					.filter( f => ! f.startsWith( '.' ) )
-					.map( f => ( { name: f, isDir: statSync( path.join( filePath, f ) ).isDirectory() } ) )
+				const entries = await readdir( filePath, { withFileTypes: true } );
+				const files = entries
+					.filter( ( entry ) => ! entry.name.startsWith( '.' ) )
+					.map( ( entry ) => ( { name: entry.name, isDir: entry.isDirectory() } ) )
 					.sort( ( a, b ) => {
 
 						if ( a.isDir && ! b.isDir ) return - 1;
@@ -92,7 +140,7 @@ function createHandler( rootDirectory ) {
 				} ).join( '\n' );
 
 				const safePath = escapeHtml( pathname );
-				const html = `<!DOCTYPE html>
+				html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -114,26 +162,19 @@ ${items}
 </body>
 </html>`;
 
-				res.writeHead( 200, { 'Content-Type': 'text/html' } );
-				res.end( html );
-				return;
+				listingCache.set( filePath, { mtimeMs: fileStat.mtimeMs, html } );
 
 			}
 
-		}
-
-		if ( ! existsSync( filePath ) ) {
-
-			res.writeHead( 404 );
-			res.end( 'File not found' );
+			res.writeHead( 200, { 'Content-Type': 'text/html' } );
+			res.end( html );
 			return;
 
 		}
 
 		const ext = path.extname( filePath ).toLowerCase();
 		const contentType = mimeTypes[ ext ] || 'application/octet-stream';
-		const stat = statSync( filePath );
-		const fileSize = stat.size;
+		const fileSize = fileStat.size;
 		const range = req.headers.range;
 
 		if ( range ) {
@@ -161,6 +202,18 @@ ${items}
 			createReadStream( filePath ).pipe( res );
 
 		}
+
+	}
+
+	return ( req, res ) => {
+
+		handleRequest( req, res ).catch( ( err ) => {
+
+			console.error( err );
+			res.writeHead( 500 );
+			res.end( 'Internal Server Error' );
+
+		} );
 
 	};
 

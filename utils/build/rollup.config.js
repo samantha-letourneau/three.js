@@ -60,6 +60,14 @@ function header() {
 
 }
 
+function isMinifiedBuild( build ) {
+
+	if ( typeof build.input === 'string' ) return false;
+
+	return Object.keys( build.input ).some( ( key ) => key.includes( '.min.' ) );
+
+}
+
 /**
  * @type {Array<import('rollup').RollupOptions>}
  */
@@ -198,4 +206,11 @@ const builds = [
 	}
 ];
 
-export default ( args ) => args.configOnlyModule ? builds.slice( 0, 3 ) : builds;
+export default ( args ) => {
+
+	if ( args.configOnlyModule ) return builds.slice( 0, 3 );
+	if ( args.configNoMinify ) return builds.filter( ( build ) => ! isMinifiedBuild( build ) );
+
+	return builds;
+
+};

@@ -35,6 +35,22 @@ const _trackRe = new RegExp( ''
 
 const _supportedObjectNames = [ 'material', 'materials', 'bones', 'map' ];
 
+function toIntegerIndex( value ) {
+
+	if ( typeof value === 'number' ) return value;
+
+	if ( typeof value === 'string' && value !== '' ) {
+
+		const index = Number( value );
+
+		if ( Number.isInteger( index ) ) return index;
+
+	}
+
+	return value;
+
+}
+
 class Composite {
 
 	constructor( targetGroup, path, optionalParsedPath ) {
@@ -566,6 +582,8 @@ class PropertyBinding {
 
 					}
 
+					objectIndex = toIntegerIndex( objectIndex );
+
 					break;
 
 				case 'map':
@@ -682,6 +700,8 @@ class PropertyBinding {
 					propertyIndex = targetObject.morphTargetDictionary[ propertyIndex ];
 
 				}
+
+				propertyIndex = toIntegerIndex( propertyIndex );
 
 			}
 

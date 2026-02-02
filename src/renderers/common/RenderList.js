@@ -78,6 +78,45 @@ function needsDoublePass( material ) {
 
 }
 
+function prependItems( target, prepends ) {
+
+	const count = prepends.length;
+	if ( count === 0 ) return;
+
+	const length = target.length;
+	target.length = length + count;
+
+	for ( let i = length - 1; i >= 0; i -- ) {
+
+		target[ i + count ] = target[ i ];
+
+	}
+
+	for ( let i = 0; i < count; i ++ ) {
+
+		target[ i ] = prepends[ count - 1 - i ];
+
+	}
+
+	prepends.length = 0;
+
+}
+
+function prependItem( target, item ) {
+
+	const length = target.length;
+	target.length = length + 1;
+
+	for ( let i = length; i > 0; i -- ) {
+
+		target[ i ] = target[ i - 1 ];
+
+	}
+
+	target[ 0 ] = item;
+
+}
+
 /**
  * When the renderer analyzes the scene at the beginning of a render call,
  * it stores 3D object for further processing in render lists. Depending on the
@@ -136,6 +175,14 @@ class RenderList {
 		 * @type {Array<Object>}
 		 */
 		this.transparent = [];
+
+		this._opaquePre = [];
+
+		this._transparentDoublePassPre = [];
+
+		this._transparentPre = [];
+
+		this._isBuilding = false;
 
 		/**
 		 * A list with transparent render bundle data.
@@ -200,6 +247,11 @@ class RenderList {
 		this.transparentDoublePass.length = 0;
 		this.transparent.length = 0;
 		this.bundles.length = 0;
+
+		this._opaquePre.length = 0;
+		this._transparentDoublePassPre.length = 0;
+		this._transparentPre.length = 0;
+		this._isBuilding = true;
 
 		this.lightsArray.length = 0;
 
@@ -319,13 +371,32 @@ class RenderList {
 			( material.transmissionNode && material.transmissionNode.isNode ) ||
 			( material.backdropNode && material.backdropNode.isNode ) ) {
 
-			if ( needsDoublePass( material ) ) this.transparentDoublePass.unshift( renderItem );
+			if ( this._isBuilding ) {
 
-			this.transparent.unshift( renderItem );
+				if ( needsDoublePass( material ) ) this._transparentDoublePassPre.push( renderItem );
+
+				this._transparentPre.push( renderItem );
+
+			} else {
+
+				if ( needsDoublePass( material ) ) prependItem( this.transparentDoublePass, renderItem );
+
+				prependItem( this.transparent, renderItem );
+
+			}
+
 
 		} else {
 
-			this.opaque.unshift( renderItem );
+			if ( this._isBuilding ) {
+
+				this._opaquePre.push( renderItem );
+
+			} else {
+
+				prependItem( this.opaque, renderItem );
+
+			}
 
 		}
 
@@ -372,6 +443,11 @@ class RenderList {
 	 * have been generated.
 	 */
 	finish() {
+
+		prependItems( this.opaque, this._opaquePre );
+		prependItems( this.transparentDoublePass, this._transparentDoublePassPre );
+		prependItems( this.transparent, this._transparentPre );
+		this._isBuilding = false;
 
 		// update lights
 

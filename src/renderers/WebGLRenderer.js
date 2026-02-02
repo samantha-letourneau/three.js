@@ -346,6 +346,29 @@ class WebGLRenderer {
 
 		let _renderBackground = false;
 
+		const _pboPool = [];
+		const _pboPoolMax = 8;
+
+		function acquirePBO() {
+
+			return _pboPool.pop() || _gl.createBuffer();
+
+		}
+
+		function releasePBO( buffer ) {
+
+			if ( _pboPool.length < _pboPoolMax ) {
+
+				_pboPool.push( buffer );
+
+			} else {
+
+				_gl.deleteBuffer( buffer );
+
+			}
+
+		}
+
 		function getTargetPixelRatio() {
 
 			return _currentRenderTarget === null ? _pixelRatio : 1;
@@ -1059,6 +1082,14 @@ class WebGLRenderer {
 			uniformsGroups.dispose();
 			programCache.dispose();
 
+			for ( const buffer of _pboPool ) {
+
+				_gl.deleteBuffer( buffer );
+
+			}
+
+			_pboPool.length = 0;
+
 			xr.dispose();
 
 			xr.removeEventListener( 'sessionstart', onXRSessionStart );
@@ -1093,6 +1124,8 @@ class WebGLRenderer {
 			const shadowMapType = shadowMap.type;
 
 			initGLContext();
+
+			_pboPool.length = 0;
 
 			info.autoReset = infoAutoReset;
 			shadowMap.enabled = shadowMapEnabled;
@@ -3087,28 +3120,38 @@ class WebGLRenderer {
 
 					}
 
-					const glBuffer = _gl.createBuffer();
-					_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, glBuffer );
-					_gl.bufferData( _gl.PIXEL_PACK_BUFFER, buffer.byteLength, _gl.STREAM_READ );
+					const glBuffer = acquirePBO();
+					let sync = null;
 
-					_gl.readPixels( x, y, width, height, utils.convert( textureFormat ), utils.convert( textureType ), 0 );
+					try {
 
-					// reset the frame buffer to the currently set buffer before waiting
-					const currFramebuffer = _currentRenderTarget !== null ? properties.get( _currentRenderTarget ).__webglFramebuffer : null;
-					state.bindFramebuffer( _gl.FRAMEBUFFER, currFramebuffer );
+						_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, glBuffer );
+						_gl.bufferData( _gl.PIXEL_PACK_BUFFER, buffer.byteLength, _gl.STREAM_READ );
 
-					// check if the commands have finished every 8 ms
-					const sync = _gl.fenceSync( _gl.SYNC_GPU_COMMANDS_COMPLETE, 0 );
+						_gl.readPixels( x, y, width, height, utils.convert( textureFormat ), utils.convert( textureType ), 0 );
 
-					_gl.flush();
+						// reset the frame buffer to the currently set buffer before waiting
+						const currFramebuffer = _currentRenderTarget !== null ? properties.get( _currentRenderTarget ).__webglFramebuffer : null;
+						state.bindFramebuffer( _gl.FRAMEBUFFER, currFramebuffer );
 
-					await probeAsync( _gl, sync, 4 );
+						// check if the commands have finished every 8 ms
+						sync = _gl.fenceSync( _gl.SYNC_GPU_COMMANDS_COMPLETE, 0 );
 
-					// read the data and delete the buffer
-					_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, glBuffer );
-					_gl.getBufferSubData( _gl.PIXEL_PACK_BUFFER, 0, buffer );
-					_gl.deleteBuffer( glBuffer );
-					_gl.deleteSync( sync );
+						_gl.flush();
+
+						await probeAsync( _gl, sync, 4 );
+
+						// read the data and release the buffer
+						_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, glBuffer );
+						_gl.getBufferSubData( _gl.PIXEL_PACK_BUFFER, 0, buffer );
+
+					} finally {
+
+						if ( sync !== null ) _gl.deleteSync( sync );
+						_gl.bindBuffer( _gl.PIXEL_PACK_BUFFER, null );
+						releasePBO( glBuffer );
+
+					}
 
 					return buffer;
 
@@ -3238,22 +3281,22 @@ class WebGLRenderer {
 
 			}
 
-			_gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, dstTexture.flipY );
-			_gl.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, dstTexture.premultiplyAlpha );
-			_gl.pixelStorei( _gl.UNPACK_ALIGNMENT, dstTexture.unpackAlignment );
+			state.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, dstTexture.flipY );
+			state.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, dstTexture.premultiplyAlpha );
+			state.pixelStorei( _gl.UNPACK_ALIGNMENT, dstTexture.unpackAlignment );
 
 			// used for copying data from cpu
-			const currentUnpackRowLen = _gl.getParameter( _gl.UNPACK_ROW_LENGTH );
-			const currentUnpackImageHeight = _gl.getParameter( _gl.UNPACK_IMAGE_HEIGHT );
-			const currentUnpackSkipPixels = _gl.getParameter( _gl.UNPACK_SKIP_PIXELS );
-			const currentUnpackSkipRows = _gl.getParameter( _gl.UNPACK_SKIP_ROWS );
-			const currentUnpackSkipImages = _gl.getParameter( _gl.UNPACK_SKIP_IMAGES );
+			const currentUnpackRowLen = state.getPixelStorei( _gl.UNPACK_ROW_LENGTH );
+			const currentUnpackImageHeight = state.getPixelStorei( _gl.UNPACK_IMAGE_HEIGHT );
+			const currentUnpackSkipPixels = state.getPixelStorei( _gl.UNPACK_SKIP_PIXELS );
+			const currentUnpackSkipRows = state.getPixelStorei( _gl.UNPACK_SKIP_ROWS );
+			const currentUnpackSkipImages = state.getPixelStorei( _gl.UNPACK_SKIP_IMAGES );
 
-			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, image.width );
-			_gl.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, image.height );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, minX );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, minY );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_IMAGES, minZ );
+			state.pixelStorei( _gl.UNPACK_ROW_LENGTH, image.width );
+			state.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, image.height );
+			state.pixelStorei( _gl.UNPACK_SKIP_PIXELS, minX );
+			state.pixelStorei( _gl.UNPACK_SKIP_ROWS, minY );
+			state.pixelStorei( _gl.UNPACK_SKIP_IMAGES, minZ );
 
 			// set up the src texture
 			const isSrc3D = srcTexture.isDataArrayTexture || srcTexture.isData3DTexture;
@@ -3379,11 +3422,11 @@ class WebGLRenderer {
 			}
 
 			// reset values
-			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, currentUnpackRowLen );
-			_gl.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, currentUnpackImageHeight );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, currentUnpackSkipPixels );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, currentUnpackSkipRows );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_IMAGES, currentUnpackSkipImages );
+			state.pixelStorei( _gl.UNPACK_ROW_LENGTH, currentUnpackRowLen );
+			state.pixelStorei( _gl.UNPACK_IMAGE_HEIGHT, currentUnpackImageHeight );
+			state.pixelStorei( _gl.UNPACK_SKIP_PIXELS, currentUnpackSkipPixels );
+			state.pixelStorei( _gl.UNPACK_SKIP_ROWS, currentUnpackSkipRows );
+			state.pixelStorei( _gl.UNPACK_SKIP_IMAGES, currentUnpackSkipImages );
 
 			// Generate mipmaps only when copying level 0
 			if ( dstLevel === 0 && dstTexture.generateMipmaps ) {

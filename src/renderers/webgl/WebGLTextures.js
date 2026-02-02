@@ -14,6 +14,8 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 	let _canvas;
 
 	const _sources = new WeakMap(); // maps WebglTexture objects to instances of Source
+	const UPDATE_RANGE_FULL_THRESHOLD = 0.5;
+	const UPDATE_RANGE_FULL_COUNT = 32;
 
 	// cordova iOS (as of 5.0) still uses UIWebView, which provides OffscreenCanvas,
 	// also OffscreenCanvas.getContext("webgl"), but not OffscreenCanvas.getContext("2d")!
@@ -758,12 +760,34 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 		const componentStride = 4; // only RGBA supported
 
 		const updateRanges = texture.updateRanges;
+		const rangeCount = updateRanges.length;
 
-		if ( updateRanges.length === 0 ) {
+		if ( rangeCount === 0 ) {
 
 			state.texSubImage2D( _gl.TEXTURE_2D, 0, 0, 0, image.width, image.height, glFormat, glType, image.data );
 
 		} else {
+
+			const dataLength = image.data ? image.data.length : image.width * image.height * componentStride;
+			let totalCount = 0;
+
+			for ( let i = 0; i < rangeCount; i ++ ) {
+
+				totalCount += updateRanges[ i ].count;
+
+			}
+
+			const useFullUpdate = dataLength === 0 ||
+				totalCount >= dataLength * UPDATE_RANGE_FULL_THRESHOLD ||
+				rangeCount > UPDATE_RANGE_FULL_COUNT;
+
+			if ( useFullUpdate ) {
+
+				state.texSubImage2D( _gl.TEXTURE_2D, 0, 0, 0, image.width, image.height, glFormat, glType, image.data );
+				texture.clearUpdateRanges();
+				return;
+
+			}
 
 			// Before applying update ranges, we merge any adjacent / overlapping
 			// ranges to reduce load on `gl.texSubImage2D`. Empirically, this has led
@@ -774,56 +798,60 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 			// update ranges in-place. This is safe because this method will clear the
 			// update ranges once updated.
 
-			updateRanges.sort( ( a, b ) => a.start - b.start );
+			if ( rangeCount > 1 ) {
 
-			// To merge the update ranges in-place, we work from left to right in the
-			// existing updateRanges array, merging ranges. This may result in a final
-			// array which is smaller than the original. This index tracks the last
-			// index representing a merged range, any data after this index can be
-			// trimmed once the merge algorithm is completed.
-			let mergeIndex = 0;
+				updateRanges.sort( ( a, b ) => a.start - b.start );
 
-			for ( let i = 1; i < updateRanges.length; i ++ ) {
+				// To merge the update ranges in-place, we work from left to right in the
+				// existing updateRanges array, merging ranges. This may result in a final
+				// array which is smaller than the original. This index tracks the last
+				// index representing a merged range, any data after this index can be
+				// trimmed once the merge algorithm is completed.
+				let mergeIndex = 0;
 
-				const previousRange = updateRanges[ mergeIndex ];
-				const range = updateRanges[ i ];
+				for ( let i = 1; i < updateRanges.length; i ++ ) {
 
-				// Only merge if in the same row and overlapping/adjacent
-				const previousEnd = previousRange.start + previousRange.count;
-				const currentRow = getRow( range.start, image.width, componentStride );
-				const previousRow = getRow( previousRange.start, image.width, componentStride );
+					const previousRange = updateRanges[ mergeIndex ];
+					const range = updateRanges[ i ];
 
-				// We add one here to merge adjacent ranges. This is safe because ranges
-				// operate over positive integers.
-				if (
-					range.start <= previousEnd + 1 &&
-					currentRow === previousRow &&
-					getRow( range.start + range.count - 1, image.width, componentStride ) === currentRow // ensure range doesn't spill
-				) {
+					// Only merge if in the same row and overlapping/adjacent
+					const previousEnd = previousRange.start + previousRange.count;
+					const currentRow = getRow( range.start, image.width, componentStride );
+					const previousRow = getRow( previousRange.start, image.width, componentStride );
 
-					previousRange.count = Math.max(
-						previousRange.count,
-						range.start + range.count - previousRange.start
-					);
+					// We add one here to merge adjacent ranges. This is safe because ranges
+					// operate over positive integers.
+					if (
+						range.start <= previousEnd + 1 &&
+						currentRow === previousRow &&
+						getRow( range.start + range.count - 1, image.width, componentStride ) === currentRow // ensure range doesn't spill
+					) {
 
-				} else {
+						previousRange.count = Math.max(
+							previousRange.count,
+							range.start + range.count - previousRange.start
+						);
 
-					++ mergeIndex;
-					updateRanges[ mergeIndex ] = range;
+					} else {
+
+						++ mergeIndex;
+						updateRanges[ mergeIndex ] = range;
+
+					}
+
 
 				}
 
+				// Trim the array to only contain the merged ranges.
+				updateRanges.length = mergeIndex + 1;
 
 			}
 
-			// Trim the array to only contain the merged ranges.
-			updateRanges.length = mergeIndex + 1;
+			const currentUnpackRowLen = state.getPixelStorei( _gl.UNPACK_ROW_LENGTH );
+			const currentUnpackSkipPixels = state.getPixelStorei( _gl.UNPACK_SKIP_PIXELS );
+			const currentUnpackSkipRows = state.getPixelStorei( _gl.UNPACK_SKIP_ROWS );
 
-			const currentUnpackRowLen = _gl.getParameter( _gl.UNPACK_ROW_LENGTH );
-			const currentUnpackSkipPixels = _gl.getParameter( _gl.UNPACK_SKIP_PIXELS );
-			const currentUnpackSkipRows = _gl.getParameter( _gl.UNPACK_SKIP_ROWS );
-
-			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, image.width );
+			state.pixelStorei( _gl.UNPACK_ROW_LENGTH, image.width );
 
 			for ( let i = 0, l = updateRanges.length; i < l; i ++ ) {
 
@@ -839,8 +867,8 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 				const width = pixelCount;
 				const height = 1;
 
-				_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, x );
-				_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, y );
+				state.pixelStorei( _gl.UNPACK_SKIP_PIXELS, x );
+				state.pixelStorei( _gl.UNPACK_SKIP_ROWS, y );
 
 				state.texSubImage2D( _gl.TEXTURE_2D, 0, x, y, width, height, glFormat, glType, image.data );
 
@@ -848,9 +876,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			texture.clearUpdateRanges();
 
-			_gl.pixelStorei( _gl.UNPACK_ROW_LENGTH, currentUnpackRowLen );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_PIXELS, currentUnpackSkipPixels );
-			_gl.pixelStorei( _gl.UNPACK_SKIP_ROWS, currentUnpackSkipRows );
+			state.pixelStorei( _gl.UNPACK_ROW_LENGTH, currentUnpackRowLen );
+			state.pixelStorei( _gl.UNPACK_SKIP_PIXELS, currentUnpackSkipPixels );
+			state.pixelStorei( _gl.UNPACK_SKIP_ROWS, currentUnpackSkipRows );
 
 		}
 
@@ -878,10 +906,10 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 			const texturePrimaries = texture.colorSpace === NoColorSpace ? null : ColorManagement.getPrimaries( texture.colorSpace );
 			const unpackConversion = texture.colorSpace === NoColorSpace || workingPrimaries === texturePrimaries ? _gl.NONE : _gl.BROWSER_DEFAULT_WEBGL;
 
-			_gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, texture.flipY );
-			_gl.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, texture.premultiplyAlpha );
-			_gl.pixelStorei( _gl.UNPACK_ALIGNMENT, texture.unpackAlignment );
-			_gl.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, unpackConversion );
+			state.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, texture.flipY );
+			state.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, texture.premultiplyAlpha );
+			state.pixelStorei( _gl.UNPACK_ALIGNMENT, texture.unpackAlignment );
+			state.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, unpackConversion );
 
 			let image = resizeImage( texture.image, false, capabilities.maxTextureSize );
 			image = verifyColorSpace( texture, image );
@@ -1309,10 +1337,10 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 			const texturePrimaries = texture.colorSpace === NoColorSpace ? null : ColorManagement.getPrimaries( texture.colorSpace );
 			const unpackConversion = texture.colorSpace === NoColorSpace || workingPrimaries === texturePrimaries ? _gl.NONE : _gl.BROWSER_DEFAULT_WEBGL;
 
-			_gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, texture.flipY );
-			_gl.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, texture.premultiplyAlpha );
-			_gl.pixelStorei( _gl.UNPACK_ALIGNMENT, texture.unpackAlignment );
-			_gl.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, unpackConversion );
+			state.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, texture.flipY );
+			state.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, texture.premultiplyAlpha );
+			state.pixelStorei( _gl.UNPACK_ALIGNMENT, texture.unpackAlignment );
+			state.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, unpackConversion );
 
 			const isCompressed = ( texture.isCompressedTexture || texture.image[ 0 ].isCompressedTexture );
 			const isDataTexture = ( texture.image[ 0 ] && texture.image[ 0 ].isDataTexture );

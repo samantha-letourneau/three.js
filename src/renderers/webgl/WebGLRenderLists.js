@@ -50,6 +50,44 @@ function reversePainterSortStable( a, b ) {
 
 }
 
+function prependItems( target, prepends ) {
+
+	const count = prepends.length;
+	if ( count === 0 ) return;
+
+	const length = target.length;
+	target.length = length + count;
+
+	for ( let i = length - 1; i >= 0; i -- ) {
+
+		target[ i + count ] = target[ i ];
+
+	}
+
+	for ( let i = 0; i < count; i ++ ) {
+
+		target[ i ] = prepends[ count - 1 - i ];
+
+	}
+
+	prepends.length = 0;
+
+}
+
+function prependItem( target, item ) {
+
+	const length = target.length;
+	target.length = length + 1;
+
+	for ( let i = length; i > 0; i -- ) {
+
+		target[ i ] = target[ i - 1 ];
+
+	}
+
+	target[ 0 ] = item;
+
+}
 
 function WebGLRenderList() {
 
@@ -60,6 +98,12 @@ function WebGLRenderList() {
 	const transmissive = [];
 	const transparent = [];
 
+	const opaquePre = [];
+	const transmissivePre = [];
+	const transparentPre = [];
+
+	let isBuilding = false;
+
 	function init() {
 
 		renderItemsIndex = 0;
@@ -67,6 +111,12 @@ function WebGLRenderList() {
 		opaque.length = 0;
 		transmissive.length = 0;
 		transparent.length = 0;
+
+		opaquePre.length = 0;
+		transmissivePre.length = 0;
+		transparentPre.length = 0;
+
+		isBuilding = true;
 
 	}
 
@@ -145,15 +195,39 @@ function WebGLRenderList() {
 
 		if ( material.transmission > 0.0 ) {
 
-			transmissive.unshift( renderItem );
+			if ( isBuilding ) {
+
+				transmissivePre.push( renderItem );
+
+			} else {
+
+				prependItem( transmissive, renderItem );
+
+			}
 
 		} else if ( material.transparent === true ) {
 
-			transparent.unshift( renderItem );
+			if ( isBuilding ) {
+
+				transparentPre.push( renderItem );
+
+			} else {
+
+				prependItem( transparent, renderItem );
+
+			}
 
 		} else {
 
-			opaque.unshift( renderItem );
+			if ( isBuilding ) {
+
+				opaquePre.push( renderItem );
+
+			} else {
+
+				prependItem( opaque, renderItem );
+
+			}
 
 		}
 
@@ -168,6 +242,11 @@ function WebGLRenderList() {
 	}
 
 	function finish() {
+
+		prependItems( opaque, opaquePre );
+		prependItems( transmissive, transmissivePre );
+		prependItems( transparent, transparentPre );
+		isBuilding = false;
 
 		// Clear references from inactive renderItems in the list
 

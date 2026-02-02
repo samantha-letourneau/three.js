@@ -1,6 +1,8 @@
 function WebGLAttributes( gl ) {
 
 	const buffers = new WeakMap();
+	const UPDATE_RANGE_FULL_THRESHOLD = 0.5;
+	const UPDATE_RANGE_FULL_COUNT = 32;
 
 	function createBuffer( attribute, bufferType ) {
 
@@ -81,15 +83,52 @@ function WebGLAttributes( gl ) {
 
 		const array = attribute.array;
 		const updateRanges = attribute.updateRanges;
+		const rangeCount = updateRanges.length;
 
 		gl.bindBuffer( bufferType, buffer );
 
-		if ( updateRanges.length === 0 ) {
+		if ( rangeCount === 0 ) {
 
 			// Not using update ranges
 			gl.bufferSubData( bufferType, 0, array );
 
 		} else {
+
+			const arrayLength = array.length;
+			let totalCount = 0;
+
+			for ( let i = 0; i < rangeCount; i ++ ) {
+
+				totalCount += updateRanges[ i ].count;
+
+			}
+
+			const useFullUpdate = arrayLength === 0 ||
+				totalCount >= arrayLength * UPDATE_RANGE_FULL_THRESHOLD ||
+				rangeCount > UPDATE_RANGE_FULL_COUNT;
+
+			if ( useFullUpdate ) {
+
+				gl.bufferSubData( bufferType, 0, array );
+
+				attribute.clearUpdateRanges();
+				attribute.onUploadCallback();
+				return;
+
+			}
+
+			if ( rangeCount === 1 ) {
+
+				const range = updateRanges[ 0 ];
+
+				gl.bufferSubData( bufferType, range.start * array.BYTES_PER_ELEMENT,
+					array, range.start, range.count );
+
+				attribute.clearUpdateRanges();
+				attribute.onUploadCallback();
+				return;
+
+			}
 
 			// Before applying update ranges, we merge any adjacent / overlapping
 			// ranges to reduce load on `gl.bufferSubData`. Empirically, this has led

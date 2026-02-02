@@ -418,6 +418,18 @@ function WebGLState( gl, extensions ) {
 
 	const currentScissor = new Vector4().fromArray( scissorParam );
 	const currentViewport = new Vector4().fromArray( viewportParam );
+	const pixelStoreDefaults = new Map( [
+		[ gl.UNPACK_ALIGNMENT, 4 ],
+		[ gl.UNPACK_FLIP_Y_WEBGL, false ],
+		[ gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false ],
+		[ gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL ],
+		[ gl.UNPACK_ROW_LENGTH, 0 ],
+		[ gl.UNPACK_IMAGE_HEIGHT, 0 ],
+		[ gl.UNPACK_SKIP_PIXELS, 0 ],
+		[ gl.UNPACK_SKIP_ROWS, 0 ],
+		[ gl.UNPACK_SKIP_IMAGES, 0 ]
+	] );
+	const currentPixelStore = new Map();
 
 	function createTexture( type, target, count, dimensions ) {
 
@@ -466,6 +478,7 @@ function WebGLState( gl, extensions ) {
 	enable( gl.CULL_FACE );
 
 	setBlending( NoBlending );
+	setPixelStoreDefaults();
 
 	//
 
@@ -590,6 +603,35 @@ function WebGLState( gl, extensions ) {
 
 	}
 
+	function setPixelStoreDefaults() {
+
+		currentPixelStore.clear();
+
+		for ( const [ pname, value ] of pixelStoreDefaults ) {
+
+			gl.pixelStorei( pname, value );
+			currentPixelStore.set( pname, value );
+
+		}
+
+	}
+
+	function pixelStorei( pname, value ) {
+
+		if ( currentPixelStore.get( pname ) !== value ) {
+
+			gl.pixelStorei( pname, value );
+			currentPixelStore.set( pname, value );
+
+		}
+
+	}
+
+	function getPixelStorei( pname ) {
+
+		return currentPixelStore.get( pname );
+
+	}
 	const equationToGL = {
 		[ AddEquation ]: gl.FUNC_ADD,
 		[ SubtractEquation ]: gl.FUNC_SUBTRACT,
@@ -1239,6 +1281,7 @@ function WebGLState( gl, extensions ) {
 
 		gl.scissor( 0, 0, gl.canvas.width, gl.canvas.height );
 		gl.viewport( 0, 0, gl.canvas.width, gl.canvas.height );
+		setPixelStoreDefaults();
 
 		// reset internals
 
@@ -1326,6 +1369,8 @@ function WebGLState( gl, extensions ) {
 		texSubImage3D: texSubImage3D,
 		compressedTexSubImage2D: compressedTexSubImage2D,
 		compressedTexSubImage3D: compressedTexSubImage3D,
+		pixelStorei: pixelStorei,
+		getPixelStorei: getPixelStorei,
 
 		scissor: scissor,
 		viewport: viewport,

@@ -12,6 +12,7 @@ function WebGLPrograms( renderer, environments, extensions, capabilities, bindin
 	const _programLayers = new Layers();
 	const _customShaders = new WebGLShaderCache();
 	const _activeChannels = new Set();
+	const _programCacheKeyArray = [];
 	const programs = [];
 	const programsMap = new Map();
 
@@ -382,7 +383,8 @@ function WebGLPrograms( renderer, environments, extensions, capabilities, bindin
 
 	function getProgramCacheKey( parameters ) {
 
-		const array = [];
+		const array = _programCacheKeyArray;
+		array.length = 0;
 
 		if ( parameters.shaderID ) {
 

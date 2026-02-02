@@ -4,13 +4,16 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname( fileURLToPath( import.meta.url ) );
 const rootDir = path.resolve( __dirname, '../..' );
+const args = process.argv.slice( 2 );
+const fastMode = args.includes( '--fast' );
 
 // Start rollup in watch mode
 const rollup = spawn( 'npx', [
 	'rollup',
 	'-c', 'utils/build/rollup.config.js',
 	'-w',
-	'-m', 'inline'
+	'-m', 'inline',
+	...( fastMode ? [ '--configOnlyModule' ] : [] )
 ], {
 	cwd: rootDir,
 	stdio: [ 'ignore', 'pipe', 'pipe' ],
