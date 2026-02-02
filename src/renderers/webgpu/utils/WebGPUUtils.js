@@ -230,6 +230,12 @@ class WebGPUUtils {
 
 		if ( bufferType === undefined ) {
 
+			if ( typeof navigator === 'undefined' || navigator.gpu === undefined ) {
+
+				throw new Error( 'WebGPUUtils: navigator.gpu is not available. Provide outputType or run in a WebGPU-capable environment.' );
+
+			}
+
 			return navigator.gpu.getPreferredCanvasFormat();
 
 		} else if ( bufferType === UnsignedByteType ) {

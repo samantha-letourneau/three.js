@@ -124,11 +124,29 @@ function isTypedArray( array ) {
  *
  * @private
  * @param {string} name - The tag name of the element to create (e.g., 'canvas', 'div').
- * @return {HTMLElement} The created XHTML element.
+ * @return {HTMLElement|OffscreenCanvas|Image} The created element or fallback object.
  */
 function createElementNS( name ) {
 
-	return document.createElementNS( 'http://www.w3.org/1999/xhtml', name );
+	if ( typeof document !== 'undefined' && document.createElementNS ) {
+
+		return document.createElementNS( 'http://www.w3.org/1999/xhtml', name );
+
+	}
+
+	if ( name === 'canvas' && typeof OffscreenCanvas !== 'undefined' ) {
+
+		return new OffscreenCanvas( 1, 1 );
+
+	}
+
+	if ( name === 'img' && typeof Image !== 'undefined' ) {
+
+		return new Image();
+
+	}
+
+	throw new Error( 'THREE.createElementNS: document is not available. Provide a DOM, an OffscreenCanvas, or a custom element implementation.' );
 
 }
 
@@ -139,13 +157,32 @@ function createElementNS( name ) {
  * display style set to 'block', which is commonly used in three.js
  * rendering contexts to avoid inline element spacing issues.
  *
- * @return {HTMLCanvasElement} A canvas element with display set to 'block'.
+ * @return {HTMLCanvasElement|OffscreenCanvas} A canvas element with display set to 'block' when supported.
  */
 function createCanvasElement() {
 
 	const canvas = createElementNS( 'canvas' );
-	canvas.style.display = 'block';
+	if ( canvas.style && canvas.style.display !== undefined ) canvas.style.display = 'block';
 	return canvas;
+
+}
+
+/**
+ * Returns a high-resolution timestamp in milliseconds.
+ *
+ * Uses `performance.now()` when available, otherwise falls back to `Date.now()`.
+ *
+ * @return {number} The current timestamp in milliseconds.
+ */
+function now() {
+
+	if ( typeof performance !== 'undefined' && typeof performance.now === 'function' ) {
+
+		return performance.now();
+
+	}
+
+	return Date.now();
 
 }
 
@@ -447,4 +484,4 @@ function toReversedProjectionMatrix( projectionMatrix ) {
 
 }
 
-export { arrayMin, arrayMax, arrayNeedsUint32, getTypedArray, createElementNS, createCanvasElement, setConsoleFunction, getConsoleFunction, log, warn, error, warnOnce, probeAsync, toNormalizedProjectionMatrix, toReversedProjectionMatrix, isTypedArray };
+export { arrayMin, arrayMax, arrayNeedsUint32, getTypedArray, createElementNS, createCanvasElement, now, setConsoleFunction, getConsoleFunction, log, warn, error, warnOnce, probeAsync, toNormalizedProjectionMatrix, toReversedProjectionMatrix, isTypedArray };

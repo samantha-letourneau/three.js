@@ -42,7 +42,8 @@ class Animation {
 		 *
 		 * @type {?(Window|XRSession)}
 		 */
-		this._context = typeof self !== 'undefined' ? self : null;
+		const globalScope = ( typeof globalThis !== 'undefined' ) ? globalThis : ( typeof self !== 'undefined' ? self : null );
+		this._context = ( globalScope && typeof globalScope.requestAnimationFrame === 'function' ) ? globalScope : null;
 
 		/**
 		 * The user-defined animation loop.
@@ -67,6 +68,12 @@ class Animation {
 	 * Starts the internal animation loop.
 	 */
 	start() {
+
+		if ( this._context === null ) {
+
+			throw new Error( 'THREE.Animation: requestAnimationFrame is not available. Set a compatible context via setContext().' );
+
+		}
 
 		const update = ( time, xrFrame ) => {
 
@@ -94,6 +101,8 @@ class Animation {
 	 * Stops the internal animation loop.
 	 */
 	stop() {
+
+		if ( this._context === null ) return;
 
 		this._context.cancelAnimationFrame( this._requestId );
 

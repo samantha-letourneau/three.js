@@ -1,4 +1,5 @@
 import { NodeUpdateType } from './constants.js';
+import { now } from '../../utils.js';
 
 /**
  * Management class for updating nodes. The module tracks metrics like
@@ -299,11 +300,11 @@ class NodeFrame {
 
 		this.frameId ++;
 
-		if ( this.lastTime === undefined ) this.lastTime = performance.now();
+		if ( this.lastTime === undefined ) this.lastTime = now();
 
-		this.deltaTime = ( performance.now() - this.lastTime ) / 1000;
+		this.deltaTime = ( now() - this.lastTime ) / 1000;
 
-		this.lastTime = performance.now();
+		this.lastTime = now();
 
 		this.time += this.deltaTime;
 

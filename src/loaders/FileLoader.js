@@ -189,7 +189,9 @@ class FileLoader extends Loader {
 
 										loaded += value.byteLength;
 
-										const event = new ProgressEvent( 'progress', { lengthComputable, loaded, total } );
+										const event = ( typeof ProgressEvent !== 'undefined' )
+											? new ProgressEvent( 'progress', { lengthComputable, loaded, total } )
+											: { type: 'progress', lengthComputable, loaded, total };
 										for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
 
 											const callback = callbacks[ i ];
@@ -239,6 +241,12 @@ class FileLoader extends Loader {
 
 						return response.text()
 							.then( text => {
+
+								if ( typeof DOMParser === 'undefined' ) {
+
+									throw new Error( 'THREE.FileLoader: DOMParser is not available in this environment. Use responseType \"text\" or provide a DOMParser.' );
+
+								}
 
 								const parser = new DOMParser();
 								return parser.parseFromString( text, mimeType );

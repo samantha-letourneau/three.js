@@ -16,7 +16,16 @@ class AudioContext {
 
 		if ( _context === undefined ) {
 
-			_context = new ( window.AudioContext || window.webkitAudioContext )();
+			const globalScope = ( typeof globalThis !== 'undefined' ) ? globalThis : ( typeof window !== 'undefined' ? window : null );
+			const NativeAudioContext = ( globalScope && ( globalScope.AudioContext || globalScope.webkitAudioContext ) ) || null;
+
+			if ( NativeAudioContext === null ) {
+
+				throw new Error( 'THREE.AudioContext: AudioContext is not available in this environment.' );
+
+			}
+
+			_context = new NativeAudioContext();
 
 		}
 

@@ -1,3 +1,5 @@
+import { now } from '../utils.js';
+
 /**
  * This class is an alternative to {@link Clock} with a different API design and behavior.
  * The goal is to avoid the conceptual flaws that became apparent in `Clock` over time.
@@ -12,6 +14,7 @@
  * timer.connect( document ); // use Page Visibility API
  * ```
  */
+
 class Timer {
 
 	/**
@@ -21,7 +24,7 @@ class Timer {
 
 		this._previousTime = 0;
 		this._currentTime = 0;
-		this._startTime = performance.now();
+		this._startTime = now();
 
 		this._delta = 0;
 		this._elapsed = 0;
@@ -127,7 +130,7 @@ class Timer {
 	 */
 	reset() {
 
-		this._currentTime = performance.now() - this._startTime;
+		this._currentTime = now() - this._startTime;
 
 		return this;
 
@@ -162,7 +165,7 @@ class Timer {
 		} else {
 
 			this._previousTime = this._currentTime;
-			this._currentTime = ( timestamp !== undefined ? timestamp : performance.now() ) - this._startTime;
+			this._currentTime = ( timestamp !== undefined ? timestamp : now() ) - this._startTime;
 
 			this._delta = ( this._currentTime - this._previousTime ) * this._timescale;
 			this._elapsed += this._delta; // _elapsed is the accumulation of all previous deltas

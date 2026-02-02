@@ -1,4 +1,4 @@
-import { warn } from '../utils.js';
+import { now, warn } from '../utils.js';
 
 /**
  * Class for keeping track of time.
@@ -68,7 +68,7 @@ class Clock {
 	 */
 	start() {
 
-		this.startTime = performance.now();
+		this.startTime = now();
 
 		this.oldTime = this.startTime;
 		this.elapsedTime = 0;
@@ -117,7 +117,7 @@ class Clock {
 
 		if ( this.running ) {
 
-			const newTime = performance.now();
+			const newTime = now();
 
 			diff = ( newTime - this.oldTime ) / 1000;
 			this.oldTime = newTime;
